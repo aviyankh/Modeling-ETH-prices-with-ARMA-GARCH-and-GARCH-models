@@ -1,0 +1,80 @@
+---
+title: "Modeling Ether returns using GARCH and ARMA-GARCH models"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r message=FALSE, warning=FALSE, echo = FALSE}
+
+library(astsa)
+library(tseries)
+library(ggplot2)
+library(forecast)
+
+eth <- read.csv("ETHUSD.csv")
+
+eth$Return <- (as.numeric(eth$Open)) - (as.numeric(eth$Close))
+eth$Date <- as.Date(eth$Date)
+eth_data <- subset(eth, Date < ("2021-06-06"))
+
+ggplot(eth_data, aes(x=Date)) +  geom_line(aes( y = as.numeric(Close))) + xlab("Date") + ylab("Price($)")
+ggplot(eth_data, aes(x=Date)) +  geom_line(aes( y = as.numeric(Return))) + xlab("Date")
+
+```
+
+Data and Methodology: 
+
+Data has been taken from late 2017 up until 2021 as data before 2017 was found have little to no variability and the price was constant. However from 2017 there seems be enough activity which can be used for our model. We aim to analyze the daily return of the asset and so a stationary series is formed by the following method: $y_t = x_t-x_{t-1}$ , where $x_t$ = daily closing price and $x_{t-1}$ = daily opening price. First an a suitable ARMA(p,q) process is chosen with the minimum AIC and from the residual errors a GARCH(1,1) is fitted. Similarly this ARMA-GARCH model fit is compared to a sole GARCH fit and the results are compared. 
+
+
+
+
+```{r echo=FALSE, warning=FALSE}
+
+eth_rt <- eth_data$Return
+
+eth_arima <- auto.arima(eth_data$Return, allowmean = F)
+ar_p <- arimaorder(eth_arima)[1] 
+ma_q <- arimaorder(eth_arima)[3]  
+
+ar_resid <- eth_arima$residuals 
+par(mfrow=c(2,1))
+acf((eth_arima$residuals), main= "ACF plot for ARMA(5,3) residuals")
+acf((eth_arima$residuals)^2, main= "ACF plot for squared residuals")
+```
+
+Analysis:
+
+Using the arma.auto function, an ARMA(5,3) model has been selected. This selection is based on the minimum AIC values among all the suitable models. Looking at the acf of the residuals, it was observed that the process is a white noise process and thus ARMA model is a suitable fit. Furthermore, looking at the ACF plot for the squared residuals, a clear pattern of correlation can be observed. This correlation structure has been modeled using the garch(1,1) process. So, a GARCH(1,1) process is fit to the returns data and a volatility plot was formed. For both the ARMA-GARCH and GARCH(1,1) process, the ljung-box test fails to reject the null hypothesis and it can be said that the residual output of the garch model is white noise process and thus models seems be appropriate. However, from the predictions plots that was observed,  the model does have some shortcomings.There are real time periods with very little variations but have been shown to vary a lot more. Moreover, One of the major shortcoming of the model is the assumption of the same effect on the positive and negative returns. Due to this property, some highly variable periods have also not been captured. Overall, the ARMA-GRACH seems to be a better fit than the sole GARCH model.
+
+
+
+```{r echo=FALSE, warning=FALSE, results='hide'}
+ar_fit <- eth_arima$fitted
+
+garch_fit <- garch(ar_resid, order=c(1,1))
+garch1 <- garch(eth_rt, order = c(1,1))
+
+ar_gar_pd <- predict(garch_fit)
+
+uk <- predict(garch1)
+
+```
+
+```{r echo=FALSE}
+plot(eth_rt, type = "l", xlab= "Time", ylab = "Returns", main = "ARMA-GARCH Predictions for ETH volatility")
+lines(as.numeric(ar_gar_pd[,1]+ar_fit), col = "red", lty = "dashed")
+lines(as.numeric(ar_gar_pd[,2]-ar_fit), col = "red", lty = "dashed")
+
+plot(eth_rt, type = "l", xlab = "Time", ylab = "Returns", main = "GARCH predictions for ETH volatility")
+lines(uk[,1], col = "red", lty = "dashed")
+lines(uk[,2], col = "red", lty = "dashed")
+
+```
+
+
